@@ -31,16 +31,12 @@ export async function searchStations(query, limit = 10) {
 
 // ── LIVE DEPARTURES ────────────────────────────────────────
 // Returns next departures from a stop
+// ── LIVE DEPARTURES (tube/overground/elizabeth/dlr) ────────
 export async function getDepartures(stopId) {
-  // Try StopPoint arrivals (works for tube/overground/dlr/elizabeth)
-  // For national-rail we use departures board
   const url = `${BASE}/StopPoint/${encodeURIComponent(stopId)}/Arrivals`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Departures failed: ${res.status}`);
-
   const data = await res.json();
-
-  // Sort by expected arrival, take next 30
   return (Array.isArray(data) ? data : [])
     .filter(d => d.timeToStation >= 0)
     .sort((a, b) => a.timeToStation - b.timeToStation)
@@ -53,60 +49,91 @@ export async function getDepartures(stopId) {
       platform: d.platformName || d.platform || null,
       expectedMins: Math.round(d.timeToStation / 60),
       expectedTime: minsToTime(d.timeToStation),
-      scheduledTime: d.expectedArrival ? new Date(d.expectedArrival).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null,
+      scheduledTime: d.expectedArrival
+        ? new Date(d.expectedArrival).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        : null,
       status: d.currentLocation || 'On time',
       mode: d.modeName || 'tube'
     }));
 }
 
-// ── NATIONAL RAIL DEPARTURES (via Journey Planner) ────────
-// For national-rail stops, use the departures board endpoint
-export async function getNationalRailDepartures(stopId) {
-  const url = `${BASE}/StopPoint/${encodeURIComponent(stopId)}/Departures`;
-  const res = await fetch(url);
+// ── NATIONAL RAIL DEPARTURES via Journey Planner ───────────
+// Uses TfL's journey planner to get departures from a stop at a given time
+export async function getNationalRailDepartures(stopId, timeStr) {
+  // timeStr format: "HH:MM" — defaults to now
+  const now = new Date();
+  const depTime = timeStr || now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const depDate = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
 
+  // We use a known busy destination (London Waterloo) as a dummy "to"
+  // to get the departures board from this stop
+  // The real goal is to get all trains leaving this stop
+  // TfL's /StopPoint/{id}/Timetable/{lineId} is another option but requires knowing the line
+  // Best option: use the departures board endpoint
+  const url = new URL(`${BASE}/Journey/JourneyResults/${encodeURIComponent(stopId)}/to/1000198`);
+  url.searchParams.set('nationalSearch', 'true');
+  url.searchParams.set('timeIs', 'Departing');
+  url.searchParams.set('time', depTime.replace(':', ''));
+  url.searchParams.set('date', depDate);
+  url.searchParams.set('journeyPreference', 'LeastTime');
+
+  const res = await fetch(url.toString());
   if (!res.ok) {
-    // Fall back to arrivals endpoint
-    return getDepartures(stopId);
+    const txt = await res.text();
+    throw new Error(`Journey planner failed: ${res.status}`);
   }
 
   const data = await res.json();
-  const boards = data.departureBoardsResponse || data;
-  const deps = Array.isArray(boards) ? boards : (boards.departures || []);
+  const journeys = data.journeys || [];
 
-  return deps.slice(0, 30).map((d, i) => ({
-    id: d.id || `nr-${i}-${d.scheduledDeparture}`,
-    line: d.lineName || d.operator || 'National Rail',
-    lineId: d.lineId || 'national-rail',
-    destination: d.destinationName || d.destination || 'Unknown',
-    platform: d.platform || null,
-    expectedMins: null,
-    expectedTime: d.expectedDeparture || d.scheduledDeparture || null,
-    scheduledTime: d.scheduledDeparture || null,
-    status: d.currentDepartures?.[0]?.reason || d.reason || 'On time',
-    mode: 'national-rail'
-  }));
+  // Extract first leg of each journey = the departing train from our stop
+  const seen = new Set();
+  const deps = [];
+  journeys.forEach(j => {
+    const firstLeg = j.legs?.[0];
+    if (!firstLeg) return;
+    const depPoint = firstLeg.departurePoint?.commonName || '';
+    const depTime = firstLeg.departureTime
+      ? new Date(firstLeg.departureTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+      : null;
+    const dest = firstLeg.arrivalPoint?.commonName || j.legs?.[j.legs.length-1]?.arrivalPoint?.commonName || 'Unknown';
+    const line = firstLeg.routeOptions?.[0]?.name || firstLeg.mode?.name || 'National Rail';
+    const lineId = firstLeg.routeOptions?.[0]?.lineIdentifier?.id || 'national-rail';
+    const platform = firstLeg.platform || null;
+    const key = `${depTime}-${dest}-${line}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    deps.push({
+      id: key,
+      line,
+      lineId,
+      destination: dest,
+      platform,
+      expectedMins: null,
+      expectedTime: depTime,
+      scheduledTime: depTime,
+      status: 'On time',
+      mode: 'national-rail'
+    });
+  });
+
+  return deps;
 }
 
-// ── SMART DEPARTURES — tries best endpoint for stop ───────
-export async function getSmartDepartures(stop) {
+// ── SMART DEPARTURES ───────────────────────────────────────
+export async function getSmartDepartures(stop, timeStr) {
   const isNationalRail = (stop.modes || []).includes('national-rail') &&
     !(stop.modes || []).includes('tube') &&
-    !(stop.modes || []).includes('elizabeth-line');
+    !(stop.modes || []).includes('elizabeth-line') &&
+    !(stop.modes || []).includes('overground');
 
+  if (isNationalRail) {
+    return getNationalRailDepartures(stop.id, timeStr);
+  }
   try {
-    if (isNationalRail) {
-      return await getNationalRailDepartures(stop.id);
-    } else {
-      return await getDepartures(stop.id);
-    }
-  } catch (e) {
-    // Try the other endpoint as fallback
-    try {
-      return await getDepartures(stop.id);
-    } catch (e2) {
-      throw new Error(`Could not fetch departures: ${e2.message}`);
-    }
+    return await getDepartures(stop.id);
+  } catch(e) {
+    return getNationalRailDepartures(stop.id, timeStr);
   }
 }
 
