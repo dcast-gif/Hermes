@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TrainWatch</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#7c6af7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TrainWatch">
+<link rel="apple-touch-icon" href="https://via.placeholder.com/192/7c6af7/ffffff?text=TW">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --surface2: #1a1a26;
+  --border: #1e1e2e;
+  --border2: #2a2a3e;
+  --text: #e8e8f0;
+  --muted: #5a5a7a;
+  --accent: #7c6af7;
+  --good: #22c55e;
+  --warn: #f59e0b;
+  --bad: #ef4444;
+  --good-bg: rgba(34,197,94,0.08);
+  --warn-bg: rgba(245,158,11,0.08);
+  --bad-bg: rgba(239,68,68,0.08);
+}
+[data-theme="light"] {
+  --bg: #f4f4f8; --surface: #ffffff; --surface2: #ededf3;
+  --border: #e0e0ec; --border2: #d0d0e0;
+  --text: #1a1a2e; --muted: #7070a0;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; overflow-x: hidden; }
+body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse 60% 40% at 70% 20%, rgba(124,106,247,0.06) 0%, transparent 60%); pointer-events: none; z-index: 0; }
+
+/* ── SIDEBAR ── */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 100; display: none; opacity: 0; transition: opacity 0.25s; }
+.overlay.open { display: block; opacity: 1; }
+.sidebar { position: fixed; top: 0; left: -280px; width: 260px; height: 100%; background: var(--surface); border-right: 1px solid var(--border); z-index: 101; transition: left 0.28s cubic-bezier(0.4,0,0.2,1); display: flex; flex-direction: column; }
+.sidebar.open { left: 0; }
+.sidebar-head { padding: 3rem 1.3rem 1.2rem; border-bottom: 1px solid var(--border); }
+.sidebar-logo { font-family: 'Syne', sans-serif; font-size: 1.15rem; font-weight: 800; background: linear-gradient(135deg, var(--text) 30%, var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.sidebar-sub { font-family: 'Space Mono', monospace; font-size: 0.6rem; color: var(--muted); letter-spacing: 0.1em; margin-top: 0.2rem; }
+.sidebar-nav { padding: 0.8rem 0.6rem; flex: 1; }
+.nav-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0.85rem; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; color: var(--muted); transition: all 0.15s; border: none; background: transparent; width: 100%; text-align: left; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 600; }
+.nav-icon { font-size: 1.1rem; width: 22px; text-align: center; }
+.sidebar-div { height: 1px; background: var(--border); margin: 0.5rem 0.8rem; }
+.sidebar-foot { padding: 1rem 0.6rem; border-top: 1px solid var(--border); }
+
+/* ── TOPBAR ── */
+.topbar { position: sticky; top: 0; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--border); padding: 0.85rem 1rem; display: flex; align-items: center; justify-content: space-between; }
+.menu-btn { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; }
+.menu-btn span { display: block; width: 16px; height: 1.5px; background: var(--text); border-radius: 2px; }
+.topbar-center { text-align: center; }
+.topbar-eye { font-family: 'Space Mono', monospace; font-size: 0.5rem; color: var(--accent); letter-spacing: 0.14em; text-transform: uppercase; }
+.topbar-name { font-family: 'Syne', sans-serif; font-size: 1.05rem; font-weight: 800; background: linear-gradient(135deg, var(--text) 30%, var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.theme-btn { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; cursor: pointer; }
+
+/* ── PAGES ── */
+.page { display: none; padding: 1.1rem 1rem 3rem; max-width: 640px; margin: 0 auto; position: relative; z-index: 1; }
+.page.active { display: block; }
+.page-title { font-family: 'Syne', sans-serif; font-size: 1.5rem; font-weight: 800; margin-bottom: 0.25rem; }
+.page-sub { font-size: 0.82rem; color: var(--muted); margin-bottom: 1.3rem; line-height: 1.5; }
+
+/* ── CARDS ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.1rem; margin-bottom: 0.9rem; }
+.card-label { font-family: 'Space Mono', monospace; font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.85rem; }
+
+/* ── SEARCH ── */
+.search-wrap { position: relative; margin-bottom: 0.6rem; }
+.search-input { width: 100%; background: var(--surface2); border: 1.5px solid var(--border2); border-radius: 10px; padding: 0.7rem 0.9rem; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.9rem; outline: none; transition: border-color 0.15s; }
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--muted); }
+.search-results { background: var(--surface2); border: 1px solid var(--border2); border-radius: 10px; overflow: hidden; display: none; margin-bottom: 0.8rem; }
+.search-results.show { display: block; }
+.search-item { padding: 0.7rem 0.9rem; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.1s; }
+.search-item:last-child { border-bottom: none; }
+.search-item:active { background: var(--border); }
+.search-item-name { font-size: 0.88rem; font-weight: 500; }
+.search-item-meta { font-size: 0.65rem; color: var(--muted); font-family: 'Space Mono', monospace; margin-top: 0.1rem; }
+
+/* ── SELECTED STATION ── */
+.selected-station { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1.5px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 10px; padding: 0.7rem 0.85rem; margin-bottom: 0.8rem; }
+.sel-name { font-size: 0.9rem; font-weight: 600; }
+.sel-meta { font-size: 0.65rem; color: var(--muted); font-family: 'Space Mono', monospace; margin-top: 0.1rem; }
+.sel-clear { background: none; border: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 0.2rem; transition: color 0.12s; }
+.sel-clear:hover { color: var(--bad); }
+
+/* ── DEPARTURES LIST ── */
+.dep-list { display: flex; flex-direction: column; gap: 0.45rem; }
+.dep-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 0.85rem; border-radius: 10px; border: 1.5px solid var(--border2); background: var(--surface2); cursor: pointer; transition: all 0.15s; }
+.dep-item:hover { border-color: var(--accent); }
+.dep-item.saved { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.dep-time { font-family: 'Space Mono', monospace; font-size: 0.95rem; font-weight: 700; min-width: 42px; }
+.dep-body { flex: 1; min-width: 0; }
+.dep-dest { font-size: 0.87rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dep-line { font-size: 0.65rem; color: var(--muted); font-family: 'Space Mono', monospace; margin-top: 0.1rem; }
+.dep-mins { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--muted); flex-shrink: 0; }
+.dep-platform { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--accent); flex-shrink: 0; }
+.dep-saved-badge { font-size: 0.6rem; background: var(--accent); color: #fff; border-radius: 4px; padding: 0.15em 0.45em; font-family: 'Space Mono', monospace; letter-spacing: 0.05em; flex-shrink: 0; }
+.dep-empty { text-align: center; padding: 2rem 1rem; color: var(--muted); font-size: 0.86rem; }
+
+/* ── DAYS ── */
+.days-row { display: flex; gap: 0.35rem; }
+.day-btn { flex: 1; padding: 0.5rem 0.2rem; border-radius: 8px; border: 1.5px solid var(--border); background: transparent; color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 0.78rem; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.15s; }
+.day-btn.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+
+/* ── TIME WINDOWS ── */
+.tw-rows { display: flex; flex-direction: column; gap: 0.45rem; margin-bottom: 0.8rem; }
+.tw-row { display: flex; align-items: center; gap: 0.45rem; background: var(--surface2); border: 1.5px solid var(--border2); border-radius: 10px; padding: 0.55rem 0.75rem; }
+.tw-label { font-family: 'Space Mono', monospace; font-size: 0.58rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; width: 26px; flex-shrink: 0; }
+.tw-sel { background: var(--surface); border: 1px solid var(--border2); border-radius: 6px; color: var(--text); font-family: 'Space Mono', monospace; font-size: 0.88rem; padding: 0.22rem 0.3rem; outline: none; cursor: pointer; -webkit-appearance: none; text-align: center; }
+.tw-sel option { background: var(--surface2); }
+.tw-sep { font-family: 'Space Mono', monospace; color: var(--muted); }
+.tw-arrow { color: var(--muted); font-size: 0.72rem; }
+.tw-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.9rem; width: 24px; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; margin-left: auto; transition: all 0.12s; }
+.tw-del:hover { background: var(--bad); color: #fff; }
+.add-tw { display: flex; align-items: center; justify-content: center; gap: 0.4rem; width: 100%; padding: 0.55rem; border-radius: 9px; border: 1.5px dashed var(--border2); background: transparent; color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 0.83rem; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+.add-tw:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── NOTIF TOGGLE ── */
+.notif-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.7rem; }
+.toggle { position: relative; width: 44px; height: 24px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-track { position: absolute; inset: 0; background: var(--border2); border-radius: 24px; cursor: pointer; transition: background 0.2s; }
+.toggle-track::before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
+.toggle input:checked + .toggle-track { background: var(--accent); }
+.toggle input:checked + .toggle-track::before { transform: translateX(20px); }
+.notif-note { font-size: 0.76rem; color: var(--muted); line-height: 1.55; }
+
+/* ── SAVED TRAINS ── */
+.saved-list { display: flex; flex-direction: column; gap: 0.55rem; }
+.saved-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0; overflow: hidden; transition: border-color 0.15s; }
+.saved-card:hover { border-color: var(--border2); }
+.saved-card-body { padding: 0.9rem 1rem; }
+.saved-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+.saved-train-time { font-family: 'Space Mono', monospace; font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+.saved-train-dest { font-size: 0.9rem; font-weight: 600; margin-top: 0.1rem; }
+.saved-train-meta { font-size: 0.68rem; color: var(--muted); font-family: 'Space Mono', monospace; margin-top: 0.25rem; }
+.saved-card-actions { display: flex; gap: 0.35rem; }
+.sca-btn { width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--border2); background: var(--surface2); color: var(--muted); font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.12s; }
+.sca-btn:hover { color: var(--text); border-color: var(--text); }
+.sca-btn.del:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
+.saved-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0 1rem 0.85rem; }
+.stag { font-family: 'Space Mono', monospace; font-size: 0.58rem; padding: 0.18em 0.55em; border-radius: 4px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
+.stag.day { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.stag.status-good { color: var(--good); border-color: color-mix(in srgb, var(--good) 35%, transparent); background: color-mix(in srgb, var(--good) 8%, transparent); }
+.stag.status-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.stag.status-bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); background: color-mix(in srgb, var(--bad) 8%, transparent); }
+.saved-empty { text-align: center; padding: 3rem 1rem; color: var(--muted); }
+.saved-empty .ei { font-size: 2.5rem; margin-bottom: 0.8rem; }
+
+/* ── STATUS BANNER ── */
+.banner { border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 0.9rem; font-size: 0.84rem; line-height: 1.5; display: none; }
+.banner.show { display: block; }
+.banner.info { background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
+.banner.good { background: var(--good-bg); border: 1px solid color-mix(in srgb, var(--good) 25%, transparent); color: var(--good); }
+.banner.warn { background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 25%, transparent); color: var(--warn); }
+.banner strong { color: var(--accent); }
+
+/* ── BUTTONS ── */
+.btn { width: 100%; padding: 0.82rem; border-radius: 11px; border: none; font-family: 'DM Sans', sans-serif; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: opacity 0.15s, transform 0.12s; margin-top: 0.5rem; }
+.btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-green { background: var(--good); color: #fff; }
+.btn-outline { background: var(--surface); border: 1.5px solid var(--border2); color: var(--text); }
+
+/* ── MODAL ── */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200; display: none; align-items: flex-end; justify-content: center; padding: 1rem; }
+.modal-bg.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 1.5rem; width: 100%; max-width: 500px; animation: up 0.22s ease; }
+@keyframes up { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+.modal h3 { font-family: 'Syne', sans-serif; font-size: 1.1rem; font-weight: 800; margin-bottom: 0.3rem; }
+.modal p { font-size: 0.82rem; color: var(--muted); margin-bottom: 1rem; line-height: 1.5; }
+.modal-input { width: 100%; background: var(--surface2); border: 1.5px solid var(--border2); border-radius: 10px; padding: 0.7rem 0.9rem; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.95rem; outline: none; transition: border-color 0.15s; margin-bottom: 1rem; }
+.modal-input:focus { border-color: var(--accent); }
+.modal-btns { display: flex; gap: 0.5rem; }
+.modal-btns .btn { margin-top: 0; flex: 1; }
+.btn-cancel { background: var(--surface2); color: var(--muted); }
+
+/* ── SPINNER ── */
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: rot 0.7s linear infinite; vertical-align: middle; margin-right: 5px; }
+@keyframes rot { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body data-theme="dark">
+
+<!-- OVERLAY -->
+<div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+
+<!-- SIDEBAR -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-head">
+    <div class="sidebar-logo">TrainWatch</div>
+    <div class="sidebar-sub">TfL Live Tracker</div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" id="nav-search" onclick="goTo('search', true)">
+      <span class="nav-icon">🔍</span> Find Trains
+    </button>
+    <button class="nav-item" id="nav-saved" onclick="goTo('saved', true)">
+      <span class="nav-icon">⭐</span> My Trains
+    </button>
+    <button class="nav-item" id="nav-settings" onclick="goTo('settings', true)">
+      <span class="nav-icon">⚙️</span> Settings
+    </button>
+    <div class="sidebar-div"></div>
+    <button class="nav-item" onclick="toggleTheme(); closeSidebar()">
+      <span class="nav-icon" id="themeIcon">☀️</span>
+      <span id="themeLabel">Light mode</span>
+    </button>
+  </nav>
+</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="menu-btn" onclick="openSidebar()">
+    <span></span><span></span><span></span>
+  </div>
+  <div class="topbar-center">
+    <div class="topbar-eye">TfL Live Tracker</div>
+    <div class="topbar-name">TrainWatch</div>
+  </div>
+  <div class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀️</div>
+</div>
+
+<!-- ══ SEARCH PAGE ══ -->
+<div class="page active" id="page-search">
+  <div class="banner info" id="searchBanner"></div>
+
+  <div class="card">
+    <div class="card-label">Search station</div>
+    <input type="text" id="stationInput" class="search-input" placeholder="e.g. Teddington, Vauxhall…" autocomplete="off">
+    <div class="search-results" id="stationResults"></div>
+    <div id="selectedStation" style="display:none"></div>
+  </div>
+
+  <div class="card" id="departuresCard" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.85rem">
+      <div class="card-label" style="margin:0">Upcoming departures</div>
+      <button onclick="refreshDepartures()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.8rem;font-family:'Space Mono',monospace;">↻ Refresh</button>
+    </div>
+    <div id="depList" class="dep-list">
+      <div class="dep-empty">Loading departures…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MY TRAINS PAGE ══ -->
+<div class="page" id="page-saved">
+  <div class="page-title">My Trains</div>
+  <p class="page-sub">Your saved trains. Tap the refresh button to check live status, or enable alerts in Settings to be notified automatically.</p>
+
+  <div class="banner info" id="savedBanner"></div>
+
+  <button class="btn btn-primary" onclick="checkAllStatus()" id="checkBtn">Check Live Status</button>
+  <button class="btn btn-green" onclick="testNotification()" style="margin-bottom:0.8rem">🧪 Test Notification</button>
+
+  <div id="savedList" class="saved-list"></div>
+</div>
+
+<!-- ══ SETTINGS PAGE ══ -->
+<div class="page" id="page-settings">
+  <div class="page-title">Settings</div>
+  <p class="page-sub">Configure when you want to receive alerts about your saved trains.</p>
+
+  <div class="card">
+    <div class="card-label">Default alert days</div>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.8rem">These days are pre-selected when you save a new train.</p>
+    <div class="days-row" id="defaultDaysGrid"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Alert time windows</div>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.8rem">Only check for disruptions during these times.</p>
+    <div class="tw-rows" id="twRows"></div>
+    <button class="add-tw" onclick="addTW()">＋ Add time window</button>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Notifications</div>
+    <div class="notif-row">
+      <span style="font-size:0.9rem;font-weight:500">Enable alerts</span>
+      <label class="toggle"><input type="checkbox" id="notifToggle" onchange="toggleNotif()"><span class="toggle-track"></span></label>
+    </div>
+    <p class="notif-note">When enabled, the app checks your saved trains every 5 minutes during alert windows and notifies you of any changes. Keep this page open or add to your Home Screen.</p>
+  </div>
+</div>
+
+<!-- SAVE TRAIN MODAL -->
+<div class="modal-bg" id="saveModal">
+  <div class="modal">
+    <h3>Save this train</h3>
+    <p id="modalDesc">Save this departure to track it.</p>
+    <div class="card-label" style="margin-bottom:0.5rem">Days to track</div>
+    <div class="days-row" id="modalDaysGrid" style="margin-bottom:1rem"></div>
+    <div class="modal-btns">
+      <button class="btn btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmSave()">Save Train</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./tfl.js"></script>
+<script>
+// ── STATE ──────────────────────────────────────────────────
+let currentStation = null;
+let currentDepartures = [];
+let savedTrains = [];       // [{id, time, dest, line, platform, station, stationId, days, savedAt}]
+let defaultDays = new Set([0,1,2,3,4]); // Mon-Fri
+let timeWindows = [];
+let notifEnabled = false;
+let notifInterval = null;
+let lastStatus = {};        // trainId → statusText
+let pendingSave = null;     // departure being saved
+let modalDays = new Set();
+
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const JS_DAY = [6,0,1,2,3,4,5]; // Sun=0 in JS → index 6
+
+// ── PERSIST ────────────────────────────────────────────────
+function persist() {
+  try {
+    localStorage.setItem('tw_trains', JSON.stringify(savedTrains));
+    localStorage.setItem('tw_days', JSON.stringify([...defaultDays]));
+    localStorage.setItem('tw_windows', JSON.stringify(timeWindows));
+    localStorage.setItem('tw_notif', notifEnabled ? '1' : '0');
+    localStorage.setItem('tw_theme', document.body.getAttribute('data-theme'));
+  } catch(e) {}
+}
+function restore() {
+  try {
+    const t = localStorage.getItem('tw_trains'); if (t) savedTrains = JSON.parse(t);
+    const d = localStorage.getItem('tw_days'); if (d) defaultDays = new Set(JSON.parse(d));
+    const w = localStorage.getItem('tw_windows'); if (w) timeWindows = JSON.parse(w);
+    const n = localStorage.getItem('tw_notif'); if (n) notifEnabled = n === '1';
+    const th = localStorage.getItem('tw_theme'); if (th) applyTheme(th);
+  } catch(e) {}
+}
+
+// ── THEME ──────────────────────────────────────────────────
+function applyTheme(t) {
+  document.body.setAttribute('data-theme', t);
+  const icon = t === 'dark' ? '☀️' : '🌙';
+  const label = t === 'dark' ? 'Light mode' : 'Dark mode';
+  document.getElementById('themeBtn').textContent = icon;
+  document.getElementById('themeIcon').textContent = icon;
+  document.getElementById('themeLabel').textContent = label;
+}
+function toggleTheme() {
+  const cur = document.body.getAttribute('data-theme');
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+  persist();
+}
+
+// ── NAVIGATION ─────────────────────────────────────────────
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+function goTo(page, fromMenu = false) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item[id^="nav-"]').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  const navBtn = document.getElementById('nav-' + page);
+  if (navBtn) navBtn.classList.add('active');
+  if (page === 'saved') renderSaved();
+  if (page === 'settings') renderSettings();
+  closeSidebar();
+}
+
+// ── BANNER ─────────────────────────────────────────────────
+function showBanner(id, msg, type = 'info') {
+  const el = document.getElementById(id);
+  el.innerHTML = msg;
+  el.className = `banner ${type} show`;
+}
+function hideBanner(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+// ── STATION SEARCH ─────────────────────────────────────────
+let searchDebounce = null;
+document.getElementById('stationInput').addEventListener('input', function() {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => doStationSearch(this.value), 320);
+});
+
+async function doStationSearch(q) {
+  const box = document.getElementById('stationResults');
+  const trimmed = q.trim();
+  if (trimmed.length < 2) { box.classList.remove('show'); box.innerHTML = ''; return; }
+
+  box.innerHTML = '<div class="search-item"><div class="search-item-name" style="color:var(--muted)">Searching…</div></div>';
+  box.classList.add('show');
+
+  try {
+    if (!window.TW) throw new Error('TfL helpers not loaded yet');
+    const results = await window.TW.searchStations(trimmed);
+    if (!results.length) {
+      box.innerHTML = '<div class="search-item"><div class="search-item-name" style="color:var(--muted)">No stations found</div></div>';
+      return;
+    }
+    window._stationResults = results;
+    box.innerHTML = results.map((s, i) => `
+      <div class="search-item" onclick="selectStation(${i})">
+        <div class="search-item-name">${s.name}</div>
+        <div class="search-item-meta">${s.modes.join(' · ')}${s.zone ? ' · Zone ' + s.zone : ''}</div>
+      </div>`).join('');
+  } catch(e) {
+    box.innerHTML = `<div class="search-item"><div class="search-item-name" style="color:var(--muted)">Error: ${e.message}</div></div>`;
+  }
+}
+
+function selectStation(i) {
+  const station = window._stationResults?.[i];
+  if (!station) return;
+  currentStation = station;
+  document.getElementById('stationInput').value = '';
+  document.getElementById('stationResults').classList.remove('show');
+  document.getElementById('stationResults').innerHTML = '';
+
+  const el = document.getElementById('selectedStation');
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div class="selected-station">
+      <div>
+        <div class="sel-name">${station.name}</div>
+        <div class="sel-meta">${station.modes.join(' · ')}${station.zone ? ' · Zone ' + station.zone : ''}</div>
+      </div>
+      <button class="sel-clear" onclick="clearStation()">×</button>
+    </div>`;
+
+  document.getElementById('departuresCard').style.display = 'block';
+  loadDepartures();
+}
+
+function clearStation() {
+  currentStation = null;
+  currentDepartures = [];
+  document.getElementById('selectedStation').style.display = 'none';
+  document.getElementById('departuresCard').style.display = 'none';
+  hideBanner('searchBanner');
+}
+
+// ── DEPARTURES ─────────────────────────────────────────────
+async function loadDepartures() {
+  const list = document.getElementById('depList');
+  list.innerHTML = '<div class="dep-empty"><span class="spin"></span> Loading departures…</div>';
+  hideBanner('searchBanner');
+
+  try {
+    if (!window.TW) throw new Error('TfL helpers not loaded');
+    const deps = await window.TW.getSmartDepartures(currentStation);
+    currentDepartures = deps;
+
+    if (!deps.length) {
+      list.innerHTML = '<div class="dep-empty">No upcoming departures found.<br><small style="font-size:0.75rem">This station may not support real-time data.</small></div>';
+      return;
+    }
+
+    const savedKeys = new Set(savedTrains.map(t => trainKey(t)));
+    list.innerHTML = deps.map((d, i) => {
+      const key = `${d.expectedTime || d.scheduledTime}-${d.destination}-${d.line}`;
+      const isSaved = savedKeys.has(key);
+      return `
+        <div class="dep-item ${isSaved ? 'saved' : ''}" onclick="openSaveModal(${i})">
+          <div class="dep-time">${d.expectedTime || d.scheduledTime || '??:??'}</div>
+          <div class="dep-body">
+            <div class="dep-dest">${d.destination}</div>
+            <div class="dep-line">${d.line}${d.platform ? ' · ' + d.platform : ''}</div>
+          </div>
+          ${d.expectedMins !== null ? `<div class="dep-mins">${d.expectedMins} min</div>` : ''}
+          ${isSaved ? '<div class="dep-saved-badge">SAVED</div>' : ''}
+        </div>`;
+    }).join('');
+
+    showBanner('searchBanner', `Tap a departure to save it and track disruptions.`, 'info');
+  } catch(e) {
+    list.innerHTML = `<div class="dep-empty">⚠️ Could not load departures.<br><small style="font-size:0.75rem">${e.message}</small></div>`;
+  }
+}
+
+function refreshDepartures() {
+  if (currentStation) loadDepartures();
+}
+
+function trainKey(t) {
+  return `${t.time}-${t.destination}-${t.line}`;
+}
+
+// ── SAVE MODAL ─────────────────────────────────────────────
+function openSaveModal(depIndex) {
+  const dep = currentDepartures[depIndex];
+  if (!dep || !currentStation) return;
+  pendingSave = { dep, station: currentStation };
+
+  document.getElementById('modalDesc').innerHTML =
+    `<strong>${dep.expectedTime || dep.scheduledTime}</strong> to <strong>${dep.destination}</strong> from <strong>${currentStation.name}</strong>${dep.platform ? ' · ' + dep.platform : ''}`;
+
+  // Build modal days grid from defaultDays
+  modalDays = new Set(defaultDays);
+  buildDaysGrid('modalDaysGrid', modalDays, (i, btn) => {
+    if (modalDays.has(i)) { modalDays.delete(i); btn.classList.remove('on'); }
+    else { modalDays.add(i); btn.classList.add('on'); }
+  });
+
+  document.getElementById('saveModal').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('saveModal').classList.remove('open');
+  pendingSave = null;
+}
+function confirmSave() {
+  if (!pendingSave) return;
+  const { dep, station } = pendingSave;
+  const train = {
+    id: Date.now(),
+    time: dep.expectedTime || dep.scheduledTime || '??:??',
+    scheduledTime: dep.scheduledTime,
+    destination: dep.destination,
+    line: dep.line,
+    lineId: dep.lineId,
+    platform: dep.platform,
+    station: station.name,
+    stationId: station.id,
+    stationModes: station.modes,
+    days: [...modalDays],
+    savedAt: new Date().toISOString(),
+    lastStatus: null
+  };
+  // Remove duplicate if same key
+  const key = trainKey(train);
+  savedTrains = savedTrains.filter(t => trainKey(t) !== key);
+  savedTrains.unshift(train);
+  persist();
+  closeModal();
+  loadDepartures(); // refresh badges
+  showBanner('searchBanner', `✅ <strong>${train.time} to ${train.destination}</strong> saved! Find it in My Trains.`, 'info');
+}
+
+// ── RENDER SAVED ───────────────────────────────────────────
+function renderSaved() {
+  const el = document.getElementById('savedList');
+  if (!savedTrains.length) {
+    el.innerHTML = `<div class="saved-empty"><div class="ei">🚂</div><p>No trains saved yet.<br>Go to <strong>Find Trains</strong>, search a station and tap a departure to save it.</p></div>`;
+    return;
+  }
+  el.innerHTML = savedTrains.map(t => {
+    const dayNames = t.days.map(i => DAYS[i]);
+    const statusClass = !t.lastStatus ? '' : t.lastStatus.toLowerCase().includes('good') ? 'status-good' : t.lastStatus.toLowerCase().includes('minor') ? 'status-warn' : 'status-bad';
+    return `
+      <div class="saved-card">
+        <div class="saved-card-body">
+          <div class="saved-card-header">
+            <div>
+              <div class="saved-train-time">${t.time}</div>
+              <div class="saved-train-dest">→ ${t.destination}</div>
+              <div class="saved-train-meta">from ${t.station}${t.platform ? ' · ' + t.platform : ''} · ${t.line}</div>
+            </div>
+            <div class="saved-card-actions">
+              <button class="sca-btn del" title="Remove" onclick="removeTrain(${t.id})">×</button>
+            </div>
+          </div>
+        </div>
+        <div class="saved-tags">
+          ${dayNames.map(d => `<span class="stag day">${d}</span>`).join('')}
+          ${t.lastStatus ? `<span class="stag ${statusClass}">${t.lastStatus}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function removeTrain(id) {
+  if (!confirm('Remove this saved train?')) return;
+  savedTrains = savedTrains.filter(t => t.id !== id);
+  persist();
+  renderSaved();
+}
+
+// ── LIVE STATUS CHECK ──────────────────────────────────────
+async function checkAllStatus() {
+  if (!savedTrains.length) { showBanner('savedBanner', 'No saved trains to check.', 'info'); return; }
+  const btn = document.getElementById('checkBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Checking…';
+  hideBanner('savedBanner');
+
+  try {
+    if (!window.TW) throw new Error('TfL helpers not loaded');
+
+    // Get unique line IDs
+    const lineIds = [...new Set(savedTrains.map(t => t.lineId).filter(Boolean))];
+    const lineStatuses = lineIds.length ? await window.TW.getMultiLineStatus(lineIds) : {};
+
+    // Get disruptions per station
+    const stationIds = [...new Set(savedTrains.map(t => t.stationId).filter(Boolean))];
+    const stationDisruptions = {};
+    for (const sid of stationIds) {
+      try {
+        const disps = await window.TW.getStopDisruptions(sid);
+        stationDisruptions[sid] = disps.length > 0 ? (disps[0].categoryDescription || 'Disruption') : null;
+      } catch(e) { stationDisruptions[sid] = null; }
+    }
+
+    // Update each train's status
+    savedTrains.forEach(t => {
+      const lineStatus = lineStatuses[t.lineId] || null;
+      const stationStatus = stationDisruptions[t.stationId] || null;
+      t.lastStatus = stationStatus || lineStatus || 'Good Service';
+      t.lastChecked = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    });
+
+    persist();
+    renderSaved();
+
+    const problems = savedTrains.filter(t => t.lastStatus && !t.lastStatus.toLowerCase().includes('good'));
+    if (problems.length) {
+      showBanner('savedBanner', `⚠️ ${problems.length} train${problems.length > 1 ? 's' : ''} affected by disruptions.`, 'warn');
+    } else {
+      showBanner('savedBanner', '✅ All trains showing Good Service.', 'good');
+    }
+  } catch(e) {
+    showBanner('savedBanner', `⚠️ Could not check status: ${e.message}`, 'warn');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Check Live Status';
+  }
+}
+
+// ── BACKGROUND POLLING ─────────────────────────────────────
+function isActiveWindow() {
+  if (!timeWindows.length) return false;
+  const now = new Date();
+  const todayIdx = JS_DAY[now.getDay()];
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  return timeWindows.some(w => nowMins >= (w.fH * 60 + w.fM) && nowMins <= (w.tH * 60 + w.tM));
+}
+
+function startPolling() {
+  stopPolling();
+  notifInterval = setInterval(async () => {
+    if (!isActiveWindow()) return;
+    await silentCheck();
+  }, 5 * 60 * 1000);
+}
+function stopPolling() {
+  if (notifInterval) clearInterval(notifInterval);
+  notifInterval = null;
+}
+
+async function silentCheck() {
+  if (!window.TW || !savedTrains.length) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  try {
+    const now = new Date();
+    const todayIdx = JS_DAY[now.getDay()];
+    const relevantTrains = savedTrains.filter(t => t.days.includes(todayIdx));
+    if (!relevantTrains.length) return;
+
+    const lineIds = [...new Set(relevantTrains.map(t => t.lineId).filter(Boolean))];
+    const lineStatuses = lineIds.length ? await window.TW.getMultiLineStatus(lineIds) : {};
+
+    relevantTrains.forEach(t => {
+      const newStatus = lineStatuses[t.lineId] || 'Good Service';
+      const prev = lastStatus[t.id];
+      const changed = prev !== undefined && prev !== newStatus;
+      const isNew = prev === undefined && !newStatus.toLowerCase().includes('good');
+
+      if (changed || isNew) {
+        const isBad = !newStatus.toLowerCase().includes('good');
+        if (isBad) {
+          new Notification(`⚠️ ${t.time} to ${t.destination}`, {
+            body: `${t.line} from ${t.station}: ${newStatus}`,
+            icon: 'https://via.placeholder.com/192/7c6af7/ffffff?text=TW'
+          });
+        } else if (changed && !isBad) {
+          new Notification(`✅ ${t.time} to ${t.destination}: All clear`, {
+            body: `${t.line} from ${t.station} is now showing Good Service.`,
+            icon: 'https://via.placeholder.com/192/7c6af7/ffffff?text=TW'
+          });
+        }
+      }
+      lastStatus[t.id] = newStatus;
+    });
+  } catch(e) {}
+}
+
+async function testNotification() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    alert('Please enable notifications in Settings first.');
+    return;
+  }
+  if (!savedTrains.length) { alert('Save a train first.'); return; }
+
+  showBanner('savedBanner', '🔍 Checking status…', 'info');
+  try {
+    await checkAllStatus();
+    const problems = savedTrains.filter(t => t.lastStatus && !t.lastStatus.toLowerCase().includes('good'));
+    if (problems.length) {
+      problems.forEach(t => {
+        new Notification(`⚠️ ${t.time} to ${t.destination}`, {
+          body: `${t.line} from ${t.station}: ${t.lastStatus}`,
+          icon: 'https://via.placeholder.com/192/7c6af7/ffffff?text=TW'
+        });
+      });
+    } else {
+      new Notification('✅ TrainWatch: All clear', {
+        body: savedTrains.map(t => `${t.time} to ${t.destination}: Good Service`).join('\n'),
+        icon: 'https://via.placeholder.com/192/7c6af7/ffffff?text=TW'
+      });
+    }
+    showBanner('savedBanner', '✅ Notification sent!', 'info');
+  } catch(e) {
+    new Notification('TrainWatch', { body: 'Could not fetch live data.' });
+  }
+}
+
+// ── SETTINGS ──────────────────────────────────────────────
+function renderSettings() {
+  buildDaysGrid('defaultDaysGrid', defaultDays, (i, btn) => {
+    if (defaultDays.has(i)) { defaultDays.delete(i); btn.classList.remove('on'); }
+    else { defaultDays.add(i); btn.classList.add('on'); }
+    persist();
+  });
+  renderTWs();
+  document.getElementById('notifToggle').checked = notifEnabled;
+}
+
+function toggleNotif() {
+  notifEnabled = document.getElementById('notifToggle').checked;
+  persist();
+  if (notifEnabled) {
+    if ('Notification' in window && Notification.permission !== 'granted') {
+      Notification.requestPermission().then(p => {
+        if (p !== 'granted') {
+          alert('Notifications blocked. Please allow them in Safari settings.');
+          document.getElementById('notifToggle').checked = false;
+          notifEnabled = false; persist();
+        } else {
+          startPolling();
+        }
+      });
+    } else {
+      startPolling();
+    }
+  } else {
+    stopPolling();
+  }
+}
+
+// ── DAYS GRID BUILDER ──────────────────────────────────────
+function buildDaysGrid(containerId, activeSet, onToggle) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  DAYS.forEach((day, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'day-btn' + (activeSet.has(i) ? ' on' : '');
+    btn.textContent = day;
+    btn.onclick = () => onToggle(i, btn);
+    el.appendChild(btn);
+  });
+}
+
+// ── TIME WINDOWS ───────────────────────────────────────────
+function addTW(fw) {
+  timeWindows.push(fw || { fH: 7, fM: 0, tH: 9, tM: 30 });
+  persist(); renderTWs();
+}
+function removeTW(i) { timeWindows.splice(i, 1); persist(); renderTWs(); }
+function renderTWs() {
+  const el = document.getElementById('twRows');
+  if (!timeWindows.length) { el.innerHTML = ''; return; }
+  el.innerHTML = timeWindows.map((w, i) => `
+    <div class="tw-row">
+      <span class="tw-label">from</span>
+      <div style="display:flex;align-items:center;gap:0.2rem">
+        ${makeHSel(w.fH, i, 'fH')}<span class="tw-sep">:</span>${makeMSel(w.fM, i, 'fM')}
+      </div>
+      <span class="tw-arrow">→</span>
+      <div style="display:flex;align-items:center;gap:0.2rem">
+        ${makeHSel(w.tH, i, 'tH')}<span class="tw-sep">:</span>${makeMSel(w.tM, i, 'tM')}
+      </div>
+      ${timeWindows.length > 1 ? `<button class="tw-del" onclick="removeTW(${i})">×</button>` : ''}
+    </div>`).join('');
+}
+function makeHSel(v, i, f) {
+  let o = '';
+  for (let h=0;h<=23;h++) o+=`<option value="${h}" ${h==v?'selected':''}>${String(h).padStart(2,'0')}</option>`;
+  return `<select class="tw-sel" onchange="updateTW(${i},'${f}',this.value)">${o}</select>`;
+}
+function makeMSel(v, i, f) {
+  let o = '';
+  for (let m=0;m<=55;m+=5) o+=`<option value="${m}" ${m==v?'selected':''}>${String(m).padStart(2,'0')}</option>`;
+  return `<select class="tw-sel" onchange="updateTW(${i},'${f}',this.value)">${o}</select>`;
+}
+function updateTW(i, f, v) { timeWindows[i][f] = parseInt(v); persist(); }
+
+// ── REGISTER SERVICE WORKER ────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+// ── INIT ───────────────────────────────────────────────────
+restore();
+if (!timeWindows.length) addTW({ fH: 7, fM: 0, tH: 9, tM: 30 });
+if (notifEnabled) startPolling();
+</script>
+</body>
+</html>
