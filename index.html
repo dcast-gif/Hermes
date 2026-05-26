@@ -455,9 +455,12 @@ function selectStation(i) {
       <button class="sel-clear" onclick="clearStation()">×</button>
     </div>`;
 
+  buildTimePicker();
+  document.getElementById('timePickerWrap').style.display = 'block';
   document.getElementById('departuresCard').style.display = 'block';
   loadDepartures();
 }
+
 
 function clearStation() {
   currentStation = null;
