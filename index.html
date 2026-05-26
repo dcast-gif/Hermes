@@ -513,7 +513,9 @@ async function loadDepartures() {
 
   try {
     if (!window.TW) throw new Error('TfL helpers not loaded');
-    const deps = await window.TW.getSmartDepartures(currentStation);
+        const timeStr = getDepTimeStr ? getDepTimeStr() : null;
+    const deps = await window.TW.getSmartDepartures(currentStation, timeStr);
+
     currentDepartures = deps;
 
     if (!deps.length) {
