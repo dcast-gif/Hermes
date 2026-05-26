@@ -337,93 +337,24 @@ body::before { content: ''; position: fixed; inset: 0; background: radial-gradie
 <script>
 // ── STATE ──────────────────────────────────────────────────
 let currentStation = null;
+let currentToStation = null;
 let currentDepartures = [];
-let savedTrains = [];       // [{id, time, dest, line, platform, station, stationId, days, savedAt}]
-let defaultDays = new Set([0,1,2,3,4]); // Mon-Fri
-let timeWindows = [];
-let notifEnabled = false;
-let notifInterval = null;
-let lastStatus = {};        // trainId → statusText
-let pendingSave = null;     // departure being saved
-let modalDays = new Set();
 
-const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-const JS_DAY = [6,0,1,2,3,4,5]; // Sun=0 in JS → index 6
-
-// ── PERSIST ────────────────────────────────────────────────
-function persist() {
-  try {
-    localStorage.setItem('tw_trains', JSON.stringify(savedTrains));
-    localStorage.setItem('tw_days', JSON.stringify([...defaultDays]));
-    localStorage.setItem('tw_windows', JSON.stringify(timeWindows));
-    localStorage.setItem('tw_notif', notifEnabled ? '1' : '0');
-    localStorage.setItem('tw_theme', document.body.getAttribute('data-theme'));
-  } catch(e) {}
-}
-function restore() {
-  try {
-    const t = localStorage.getItem('tw_trains'); if (t) savedTrains = JSON.parse(t);
-    const d = localStorage.getItem('tw_days'); if (d) defaultDays = new Set(JSON.parse(d));
-    const w = localStorage.getItem('tw_windows'); if (w) timeWindows = JSON.parse(w);
-    const n = localStorage.getItem('tw_notif'); if (n) notifEnabled = n === '1';
-    const th = localStorage.getItem('tw_theme'); if (th) applyTheme(th);
-  } catch(e) {}
-}
-
-// ── THEME ──────────────────────────────────────────────────
-function applyTheme(t) {
-  document.body.setAttribute('data-theme', t);
-  const icon = t === 'dark' ? '☀️' : '🌙';
-  const label = t === 'dark' ? 'Light mode' : 'Dark mode';
-  document.getElementById('themeBtn').textContent = icon;
-  document.getElementById('themeIcon').textContent = icon;
-  document.getElementById('themeLabel').textContent = label;
-}
-function toggleTheme() {
-  const cur = document.body.getAttribute('data-theme');
-  applyTheme(cur === 'dark' ? 'light' : 'dark');
-  persist();
-}
-
-// ── NAVIGATION ─────────────────────────────────────────────
-function openSidebar() {
-  document.getElementById('sidebar').classList.add('open');
-  document.getElementById('overlay').classList.add('open');
-}
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('overlay').classList.remove('open');
-}
-function goTo(page, fromMenu = false) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item[id^="nav-"]').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-' + page).classList.add('active');
-  const navBtn = document.getElementById('nav-' + page);
-  if (navBtn) navBtn.classList.add('active');
-  if (page === 'saved') renderSaved();
-  if (page === 'settings') renderSettings();
-  closeSidebar();
-}
-
-// ── BANNER ─────────────────────────────────────────────────
-function showBanner(id, msg, type = 'info') {
-  const el = document.getElementById(id);
-  el.innerHTML = msg;
-  el.className = `banner ${type} show`;
-}
-function hideBanner(id) {
-  document.getElementById(id).classList.remove('show');
-}
-
-// ── STATION SEARCH ─────────────────────────────────────────
+// ── STATION SEARCH (FROM) ──────────────────────────────────
 let searchDebounce = null;
 document.getElementById('stationInput').addEventListener('input', function() {
   clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(() => doStationSearch(this.value), 320);
+  searchDebounce = setTimeout(() => doStationSearch('from', this.value), 320);
 });
 
-async function doStationSearch(q) {
-  const box = document.getElementById('stationResults');
+document.getElementById('toStationInput').addEventListener('input', function() {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => doStationSearch('to', this.value), 320);
+});
+
+async function doStationSearch(type, q) {
+  const resultsId = type === 'from' ? 'stationResults' : 'toStationResults';
+  const box = document.getElementById(resultsId);
   const trimmed = q.trim();
   if (trimmed.length < 2) { box.classList.remove('show'); box.innerHTML = ''; return; }
 
@@ -437,9 +368,11 @@ async function doStationSearch(q) {
       box.innerHTML = '<div class="search-item"><div class="search-item-name" style="color:var(--muted)">No stations found</div></div>';
       return;
     }
-    window._stationResults = results;
+    if (type === 'from') window._stationResults = results;
+    else window._toStationResults = results;
+
     box.innerHTML = results.map((s, i) => `
-      <div class="search-item" onclick="selectStation(${i})">
+      <div class="search-item" onclick="selectStation('${type}', ${i})">
         <div class="search-item-name">${s.name}</div>
         <div class="search-item-meta">${s.modes.join(' · ')}${s.zone ? ' · Zone ' + s.zone : ''}</div>
       </div>`).join('');
@@ -448,113 +381,125 @@ async function doStationSearch(q) {
   }
 }
 
-function selectStation(i) {
-  const station = window._stationResults?.[i];
-  if (!station) return;
-  currentStation = station;
-  document.getElementById('stationInput').value = '';
-  document.getElementById('stationResults').classList.remove('show');
-  document.getElementById('stationResults').innerHTML = '';
+function selectStation(type, i) {
+  if (type === 'from') {
+    const station = window._stationResults?.[i];
+    if (!station) return;
+    currentStation = station;
+    document.getElementById('stationInput').value = '';
+    document.getElementById('stationResults').classList.remove('show');
+    document.getElementById('stationResults').innerHTML = '';
 
-  const el = document.getElementById('selectedStation');
-  el.style.display = 'block';
-  el.innerHTML = `
-    <div class="selected-station">
-      <div>
-        <div class="sel-name">${station.name}</div>
-        <div class="sel-meta">${station.modes.join(' · ')}${station.zone ? ' · Zone ' + station.zone : ''}</div>
-      </div>
-      <button class="sel-clear" onclick="clearStation()">×</button>
-    </div>`;
+    const el = document.getElementById('selectedStation');
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div class="selected-station">
+        <div>
+          <div class="sel-name">${station.name}</div>
+          <div class="sel-meta">${station.modes.join(' · ')}${station.zone ? ' · Zone ' + station.zone : ''}</div>
+        </div>
+        <button class="sel-clear" onclick="clearStation('from')">×</button>
+      </div>`;
 
-  buildTimePicker();
-  document.getElementById('timePickerWrap').style.display = 'block';
-  document.getElementById('departuresCard').style.display = 'block';
-  loadDepartures();
+    document.getElementById('toStationWrap').style.display = 'block';
+    buildTimePicker();
+    document.getElementById('timePickerWrap').style.display = 'block';
+    tryLoadDepartures();
+
+  } else {
+    const station = window._toStationResults?.[i];
+    if (!station) return;
+    currentToStation = station;
+    document.getElementById('toStationInput').value = '';
+    document.getElementById('toStationResults').classList.remove('show');
+    document.getElementById('toStationResults').innerHTML = '';
+
+    const el = document.getElementById('selectedToStation');
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div class="selected-station">
+        <div>
+          <div class="sel-name">${station.name}</div>
+          <div class="sel-meta">${station.modes.join(' · ')}${station.zone ? ' · Zone ' + station.zone : ''}</div>
+        </div>
+        <button class="sel-clear" onclick="clearStation('to')">×</button>
+      </div>`;
+
+    document.getElementById('departuresCard').style.display = 'block';
+    loadDepartures();
+  }
 }
 
-
-function clearStation() {
-  currentStation = null;
-  currentDepartures = [];
-  document.getElementById('selectedStation').style.display = 'none';
-  document.getElementById('departuresCard').style.display = 'none';
-  document.getElementById('timePickerWrap').style.display = 'none';
+function clearStation(type) {
+  if (type === 'from') {
+    currentStation = null;
+    currentToStation = null;
+    currentDepartures = [];
+    document.getElementById('selectedStation').style.display = 'none';
+    document.getElementById('selectedToStation').style.display = 'none';
+    document.getElementById('toStationWrap').style.display = 'none';
+    document.getElementById('departuresCard').style.display = 'none';
+    document.getElementById('timePickerWrap').style.display = 'none';
+  } else {
+    currentToStation = null;
+    currentDepartures = [];
+    document.getElementById('selectedToStation').style.display = 'none';
+    document.getElementById('departuresCard').style.display = 'none';
+  }
   hideBanner('searchBanner');
 }
 
+function tryLoadDepartures() {
+  if (currentStation && currentToStation) loadDepartures();
+}
+
 function buildTimePicker() {
-  const hourSel = document.getElementById('depHour');
-  const minSel = document.getElementById('depMin');
-  if (hourSel.options.length) return; // already built
-  for (let h = 0; h <= 23; h++) {
-    const o = document.createElement('option');
-    o.value = h; o.textContent = String(h).padStart(2,'0');
-    hourSel.appendChild(o);
-  }
-  for (let m = 0; m <= 55; m += 5) {
-    const o = document.createElement('option');
-    o.value = m; o.textContent = String(m).padStart(2,'0');
-    minSel.appendChild(o);
-  }
+  const fromH = document.getElementById('depHourFrom');
+  if (fromH.options.length) return;
+  ['depHourFrom','depHourTo'].forEach(id => {
+    const sel = document.getElementById(id);
+    for (let h = 0; h <= 23; h++) {
+      const o = document.createElement('option');
+      o.value = h; o.textContent = String(h).padStart(2,'0');
+      sel.appendChild(o);
+    }
+  });
+  ['depMinFrom','depMinTo'].forEach(id => {
+    const sel = document.getElementById(id);
+    for (let m = 0; m <= 55; m += 5) {
+      const o = document.createElement('option');
+      o.value = m; o.textContent = String(m).padStart(2,'0');
+      sel.appendChild(o);
+    }
+  });
   setDepTimeNow();
 }
 
 function setDepTimeNow() {
   const now = new Date();
-  document.getElementById('depHour').value = now.getHours();
-  document.getElementById('depMin').value = Math.floor(now.getMinutes() / 5) * 5;
+  const h = now.getHours();
+  const m = Math.floor(now.getMinutes() / 5) * 5;
+  document.getElementById('depHourFrom').value = h;
+  document.getElementById('depMinFrom').value = m;
+  document.getElementById('depHourTo').value = h + 1 <= 23 ? h + 1 : 23;
+  document.getElementById('depMinTo').value = m;
+  if (currentStation && currentToStation) loadDepartures();
 }
 
 function getDepTimeStr() {
-  const h = document.getElementById('depHour').value;
-  const m = document.getElementById('depMin').value;
+  const h = document.getElementById('depHourFrom').value;
+  const m = document.getElementById('depMinFrom').value;
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 }
 
-function onTimeChange() {
-  if (currentStation) loadDepartures();
+function getDepTimeTo() {
+  const h = document.getElementById('depHourTo').value;
+  const m = document.getElementById('depMinTo').value;
+  return { h: parseInt(h), m: parseInt(m) };
 }
 
-
-// ── DEPARTURES ─────────────────────────────────────────────
-async function loadDepartures() {
-  const list = document.getElementById('depList');
-  list.innerHTML = '<div class="dep-empty"><span class="spin"></span> Loading departures…</div>';
-  hideBanner('searchBanner');
-
-  try {
-    if (!window.TW) throw new Error('TfL helpers not loaded');
-        const timeStr = getDepTimeStr ? getDepTimeStr() : null;
-    const deps = await window.TW.getSmartDepartures(currentStation, timeStr);
-
-    currentDepartures = deps;
-
-    if (!deps.length) {
-      list.innerHTML = '<div class="dep-empty">No upcoming departures found.<br><small style="font-size:0.75rem">This station may not support real-time data.</small></div>';
-      return;
-    }
-
-    const savedKeys = new Set(savedTrains.map(t => trainKey(t)));
-    list.innerHTML = deps.map((d, i) => {
-      const key = `${d.expectedTime || d.scheduledTime}-${d.destination}-${d.line}`;
-      const isSaved = savedKeys.has(key);
-      return `
-        <div class="dep-item ${isSaved ? 'saved' : ''}" onclick="openSaveModal(${i})">
-          <div class="dep-time">${d.expectedTime || d.scheduledTime || '??:??'}</div>
-          <div class="dep-body">
-            <div class="dep-dest">${d.destination}</div>
-            <div class="dep-line">${d.line}${d.platform ? ' · ' + d.platform : ''}</div>
-          </div>
-          ${d.expectedMins !== null ? `<div class="dep-mins">${d.expectedMins} min</div>` : ''}
-          ${isSaved ? '<div class="dep-saved-badge">SAVED</div>' : ''}
-        </div>`;
-    }).join('');
-
-    showBanner('searchBanner', `Tap a departure to save it and track disruptions.`, 'info');
-  } catch(e) {
-    list.innerHTML = `<div class="dep-empty">⚠️ Could not load departures.<br><small style="font-size:0.75rem">${e.message}</small></div>`;
-  }
+function onTimeChange() {
+  if (currentStation && currentToStation) loadDepartures();
 }
 
 function refreshDepartures() {
