@@ -1,0 +1,22 @@
+{
+  "name": "TrainWatch",
+  "short_name": "TrainWatch",
+  "description": "Track your train times and get notified of disruptions",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#7c6af7",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192/7c6af7/ffffff?text=TW",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512/7c6af7/ffffff?text=TW",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
