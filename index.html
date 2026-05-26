@@ -464,8 +464,43 @@ function clearStation() {
   currentDepartures = [];
   document.getElementById('selectedStation').style.display = 'none';
   document.getElementById('departuresCard').style.display = 'none';
+  document.getElementById('timePickerWrap').style.display = 'none';
   hideBanner('searchBanner');
 }
+
+function buildTimePicker() {
+  const hourSel = document.getElementById('depHour');
+  const minSel = document.getElementById('depMin');
+  if (hourSel.options.length) return; // already built
+  for (let h = 0; h <= 23; h++) {
+    const o = document.createElement('option');
+    o.value = h; o.textContent = String(h).padStart(2,'0');
+    hourSel.appendChild(o);
+  }
+  for (let m = 0; m <= 55; m += 5) {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = String(m).padStart(2,'0');
+    minSel.appendChild(o);
+  }
+  setDepTimeNow();
+}
+
+function setDepTimeNow() {
+  const now = new Date();
+  document.getElementById('depHour').value = now.getHours();
+  document.getElementById('depMin').value = Math.floor(now.getMinutes() / 5) * 5;
+}
+
+function getDepTimeStr() {
+  const h = document.getElementById('depHour').value;
+  const m = document.getElementById('depMin').value;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+function onTimeChange() {
+  if (currentStation) loadDepartures();
+}
+
 
 // ── DEPARTURES ─────────────────────────────────────────────
 async function loadDepartures() {
